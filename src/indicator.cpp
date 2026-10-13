@@ -8,6 +8,7 @@
 #include <QScreen>
 #include <QTimer>
 #include <QTime>
+#include <QColor>
 
 class OverlayWidget : public QWidget {
 	QTimer *m_timer;
@@ -15,6 +16,7 @@ class OverlayWidget : public QWidget {
 	int m_timeout_ms = 0;
 	int m_indicator_size = 0;
 	uint64_t m_start_time = 0;
+	QColor m_color = Qt::red;
 public:
 	OverlayWidget(QWidget *parent)
 		: QWidget(parent)
@@ -33,10 +35,17 @@ public:
 		m_timer->start(100);
 	}
 
-	void queue_show(int timeout, int size)
+	void queue_show(int timeout, int size, uint32_t color)
 	{
 		m_timeout_ms = timeout;
 		m_indicator_size = size;
+		
+		// Extract standard RGB from OBS's hex format using bit shifting
+		int r = color & 0xFF;
+		int g = (color >> 8) & 0xFF;
+		int b = (color >> 16) & 0xFF;
+		m_color = QColor(r, g, b);
+
 		m_want_show = true;
 	}
 
@@ -55,7 +64,7 @@ protected:
 	{
 		QPainter painter(this);
 		painter.setRenderHint(QPainter::Antialiasing);
-		painter.setBrush(QBrush(Qt::red));
+		painter.setBrush(QBrush(m_color)); 
 		painter.drawEllipse(0, 0, width(), height());
 	}
 
@@ -93,9 +102,9 @@ void indicator_init()
 	overlay = new OverlayWidget(main_window);
 }
 
-void indicator_show(int timeout_ms, int indicator_size)
+void indicator_show(int timeout_ms, int indicator_size, uint32_t color)
 {
 	if (overlay) {
-		overlay->queue_show(timeout_ms, indicator_size);
+		overlay->queue_show(timeout_ms, indicator_size, color);
 	}
 }

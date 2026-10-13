@@ -16,16 +16,11 @@
  ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
  **/
 
-/**
- * Most of the logic is directly taken from the obs noise gate filter:
- * https://github.com/obsproject/obs-studio/blob/master/plugins/obs-filters/noise-gate-filter.c
- */
 #include <media-io/audio-math.h>
 #include <obs-module.h>
 #include <util/platform.h>
 
 #include "miniaudio.h"
-
 #include "indicator.h"
 
 #define write_log(log_level, format, ...) \
@@ -35,7 +30,7 @@
 #define bdebug(format, ...)       \
 	write_log(                \
 		LOG_INFO, format, \
-		##__VA_ARGS__) // apparently debug level isn't logged by default, so we just use info level for debug builds
+		##__VA_ARGS__)
 #else
 #define bdebug(format, ...) write_log(LOG_DEBUG, format, ##__VA_ARGS__)
 #endif
@@ -44,20 +39,21 @@
 #define berr(format, ...) write_log(LOG_ERROR, format, ##__VA_ARGS__)
 
 /* clang-format off */
-#define S_COOLDOWN              "cooldown"
-#define S_OPEN_THRESHOLD        "open_threshold"
-#define S_CLOSE_THRESHOLD       "close_threshold"
-#define S_ATTACK_TIME           "attack_time"
-#define S_HOLD_TIME             "hold_time"
-#define S_RELEASE_TIME          "release_time"
-#define S_FILE                  "file"
-#define S_DEVICE                "device"
-#define S_AUDIO_INDICATOR       "audio_indicator"
-#define S_VISUAL_INDICATOR      "visual_indicator"
-#define S_VISUAL_INDICATOR_SIZE "visual_indicator_size"
-#define S_NOISE_GATE_GROUP      "ng_group"
-#define S_VISUAL_GROUP          "visual_group"
-#define S_AUDIO_GROUP           "audio_group"
+#define S_COOLDOWN               "cooldown"
+#define S_OPEN_THRESHOLD         "open_threshold"
+#define S_CLOSE_THRESHOLD        "close_threshold"
+#define S_ATTACK_TIME            "attack_time"
+#define S_HOLD_TIME              "hold_time"
+#define S_RELEASE_TIME           "release_time"
+#define S_FILE                   "file"
+#define S_DEVICE                 "device"
+#define S_AUDIO_INDICATOR        "audio_indicator"
+#define S_VISUAL_INDICATOR       "visual_indicator"
+#define S_VISUAL_INDICATOR_SIZE  "visual_indicator_size"
+#define S_VISUAL_INDICATOR_COLOR "visual_indicator_color"
+#define S_NOISE_GATE_GROUP       "ng_group"
+#define S_VISUAL_GROUP           "visual_group"
+#define S_AUDIO_GROUP            "audio_group"
 
 #define MT_                            obs_module_text
 #define TEXT_OPEN_THRESHOLD            MT_("NoiseGate.OpenThreshold")
@@ -71,13 +67,13 @@
 #define TEXT_AUDIO_INDICATOR           MT_("Enabled")
 #define TEXT_VISUAL_INDICATOR          MT_("Enabled")
 #define TEXT_VISUAL_INDICATOR_SIZE     MT_("VisualIndicatorSize")
+#define TEXT_VISUAL_INDICATOR_COLOR    MT_("VisualIndicatorColor")
 #define TEXT_NOISE_GATE_GROUP          MT_("NoiseGate")
 #define TEXT_VISUAL_GROUP              MT_("Group.VisualIndicator")
 #define TEXT_AUDIO_GROUP               MT_("Group.AudioIndicator")
 
 #define VOL_MIN -96.0
 #define VOL_MAX 0.0
-
 /* clang-format on */
 
 struct muted_data {
@@ -114,6 +110,7 @@ struct muted_data {
     bool visual_indicator;
 
     int indicator_size;
+    uint32_t indicator_color;
 };
 
 OBS_DECLARE_MODULE()
@@ -220,7 +217,7 @@ static void load_wav(struct muted_data *d, const char *path)
         result = ma_decoder_get_length_in_pcm_frames(&d->ma_decoder, &frameCount);
         if (result == MA_SUCCESS) {
             d->file_length = (frameCount / d->ma_decoder.outputSampleRate) * 1000;
-            blog(LOG_DEBUG, "'%s' is %i ms long", path, (int)d->file_length); // macos won't use %llu so screw it
+            blog(LOG_DEBUG, "'%s' is %i ms long", path, (int)d->file_length);
         } else {
             blog(LOG_ERROR, "ma_decoder_get_length_in_pcm_frames failed for '%s'", path);
         }
@@ -261,7 +258,6 @@ static void open_device(struct muted_data *d, const char *device)
         return;
     }
 
-    // Find the device with the specified name
     for (ma_uint32 i = 0; i < playbackDeviceCount; ++i) {
         if (strcmp(pPlaybackDevices[i].name, device) == 0) {
             pPlaybackDevice = &pPlaybackDevices[i];
@@ -274,7 +270,6 @@ static void open_device(struct muted_data *d, const char *device)
         return;
     }
 
-    // open device using the info in ma_device_info
     deviceConfig = ma_device_config_init(ma_device_type_playback);
     deviceConfig.playback.format = d->ma_decoder.outputFormat;
     deviceConfig.playback.channels = d->ma_decoder.outputChannels;
@@ -321,7 +316,10 @@ static void muted_update(void *data, obs_data_t *s)
     ng->audio_indicator = obs_data_get_bool(s, S_AUDIO_INDICATOR);
     ng->visual_indicator = obs_data_get_bool(s, S_VISUAL_INDICATOR);
     ng->indicator_size = (int)obs_data_get_int(s, S_VISUAL_INDICATOR_SIZE);
+    ng->indicator_color = (uint32_t)obs_data_get_int(s, S_VISUAL_INDICATOR_COLOR);
 
+    if (ng->visual_indicator)
+        indicator_show(ng->cooldown * 0.7f, ng->indicator_size, ng->indicator_color);
 
     ng->sample_rate_i = 1.0f / sample_rate;
     ng->channels = audio_output_get_channels(obs_get_audio());
@@ -434,9 +432,9 @@ static struct obs_audio_data *muted_filter_audio(void *data, struct obs_audio_da
         ng->last_play_time = time;
         if (ng->audio_indicator)
             play_audio(data);
-	    // hide the visual indicator a bit early so it blinks if there's continous audio on the source
+        // hide the visual indicator a bit early so it blinks if there's continous audio on the source
         if (ng->visual_indicator)
-	        indicator_show(ng->cooldown * 0.7f, ng->indicator_size);
+            indicator_show(ng->cooldown * 0.7f, ng->indicator_size, ng->indicator_color);
     }
 
     return audio;
@@ -454,6 +452,7 @@ static void muted_defaults(obs_data_t *s)
     obs_data_set_default_bool(s, S_AUDIO_INDICATOR, false);
     obs_data_set_default_bool(s, S_VISUAL_INDICATOR, true);
     obs_data_set_default_int(s, S_VISUAL_INDICATOR_SIZE, 45);
+    obs_data_set_default_int(s, S_VISUAL_INDICATOR_COLOR, 0x000000FF);
 
     char *path = obs_module_file("urmuted.wav");
     obs_data_set_default_string(s, S_FILE, path);
@@ -493,8 +492,9 @@ static obs_properties_t *muted_properties(void *data)
 				TEXT_VISUAL_INDICATOR);
     p = obs_properties_add_int(visual_group, S_VISUAL_INDICATOR_SIZE,
 			       TEXT_VISUAL_INDICATOR_SIZE, 5, 500, 1);
+    p = obs_properties_add_color(visual_group, S_VISUAL_INDICATOR_COLOR,
+                   TEXT_VISUAL_INDICATOR_COLOR);
     obs_properties_add_group(ppts, S_VISUAL_GROUP, TEXT_VISUAL_GROUP, OBS_GROUP_NORMAL, visual_group);
-
 
     /* Audio indicator settings */
     p = obs_properties_add_bool(audio_group, S_AUDIO_INDICATOR, TEXT_AUDIO_INDICATOR);
@@ -539,8 +539,8 @@ const char *obs_module_description(void)
 bool obs_module_load(void)
 {
     obs_register_source(&muted_filter);
-	binfo("loaded v%s, %s@%s, compile time: %s", PLUGIN_VERSION,
-	      GIT_COMMIT_HASH, GIT_BRANCH, BUILD_TIME);
+    binfo("loaded v%s, %s@%s, compile time: %s", PLUGIN_VERSION,
+          GIT_COMMIT_HASH, GIT_BRANCH, BUILD_TIME);
 
     indicator_init();
     return true;
