@@ -73,6 +73,7 @@ static inline float db_to_mul(float db)
 #define S_VISUAL_INDICATOR       "visual_indicator"
 #define S_VISUAL_INDICATOR_SIZE  "visual_indicator_size"
 #define S_VISUAL_INDICATOR_COLOR "visual_indicator_color"
+#define S_VISUAL_INDICATOR_POS   "visual_indicator_pos"
 #define S_NOISE_GATE_GROUP       "ng_group"
 #define S_VISUAL_GROUP           "visual_group"
 #define S_AUDIO_GROUP            "audio_group"
@@ -90,6 +91,7 @@ static inline float db_to_mul(float db)
 #define TEXT_VISUAL_INDICATOR          MT_("Enabled")
 #define TEXT_VISUAL_INDICATOR_SIZE     MT_("VisualIndicatorSize")
 #define TEXT_VISUAL_INDICATOR_COLOR    MT_("VisualIndicatorColor")
+#define TEXT_VISUAL_INDICATOR_POS      MT_("VisualIndicatorPosition")
 #define TEXT_NOISE_GATE_GROUP          MT_("NoiseGate")
 #define TEXT_VISUAL_GROUP              MT_("Group.VisualIndicator")
 #define TEXT_AUDIO_GROUP               MT_("Group.AudioIndicator")
@@ -133,6 +135,7 @@ struct muted_data {
 
     int indicator_size;
     uint32_t indicator_color;
+    int indicator_pos;
 };
 
 OBS_DECLARE_MODULE()
@@ -339,9 +342,10 @@ static void muted_update(void *data, obs_data_t *s)
     ng->visual_indicator = obs_data_get_bool(s, S_VISUAL_INDICATOR);
     ng->indicator_size = (int)obs_data_get_int(s, S_VISUAL_INDICATOR_SIZE);
     ng->indicator_color = (uint32_t)obs_data_get_int(s, S_VISUAL_INDICATOR_COLOR);
+    ng->indicator_pos = (int)obs_data_get_int(s, S_VISUAL_INDICATOR_POS);
 
     if (ng->visual_indicator)
-        indicator_show(ng->cooldown * 0.7f, ng->indicator_size, ng->indicator_color);
+        indicator_show(ng->cooldown * 0.7f, ng->indicator_size, ng->indicator_color, ng->indicator_pos);
 
     ng->sample_rate_i = 1.0f / sample_rate;
     ng->channels = audio_output_get_channels(obs_get_audio());
@@ -456,7 +460,7 @@ static struct obs_audio_data *muted_filter_audio(void *data, struct obs_audio_da
             play_audio(data);
         // hide the visual indicator a bit early so it blinks if there's continous audio on the source
         if (ng->visual_indicator)
-            indicator_show(ng->cooldown * 0.7f, ng->indicator_size, ng->indicator_color);
+            indicator_show(ng->cooldown * 0.7f, ng->indicator_size, ng->indicator_color, ng->indicator_pos);
     }
 
     return audio;
@@ -475,6 +479,7 @@ static void muted_defaults(obs_data_t *s)
     obs_data_set_default_bool(s, S_VISUAL_INDICATOR, true);
     obs_data_set_default_int(s, S_VISUAL_INDICATOR_SIZE, 45);
     obs_data_set_default_int(s, S_VISUAL_INDICATOR_COLOR, 0x000000FF);
+    obs_data_set_default_int(s, S_VISUAL_INDICATOR_POS, 0);
 
     char *path = obs_module_file("urmuted.wav");
     obs_data_set_default_string(s, S_FILE, path);
@@ -516,6 +521,12 @@ static obs_properties_t *muted_properties(void *data)
 			       TEXT_VISUAL_INDICATOR_SIZE, 5, 500, 1);
     p = obs_properties_add_color(visual_group, S_VISUAL_INDICATOR_COLOR,
                    TEXT_VISUAL_INDICATOR_COLOR);
+    p = obs_properties_add_list(visual_group, S_VISUAL_INDICATOR_POS, TEXT_VISUAL_INDICATOR_POS, OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+    obs_property_list_add_int(p, "Top-Left", 0);
+    obs_property_list_add_int(p, "Top-Right", 1);
+    obs_property_list_add_int(p, "Bottom-Left", 2);
+    obs_property_list_add_int(p, "Bottom-Right", 3);
+    obs_property_list_add_int(p, "Center", 4);
     obs_properties_add_group(ppts, S_VISUAL_GROUP, TEXT_VISUAL_GROUP, OBS_GROUP_NORMAL, visual_group);
 
     /* Audio indicator settings */
