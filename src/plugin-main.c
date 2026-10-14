@@ -16,12 +16,34 @@
  ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
  **/
 
+#include <math.h>
+#if __has_include(<media-io/audio-math.h>)
 #include <media-io/audio-math.h>
+#elif __has_include(<obs-internal/media-io/audio-math.h>)
+#include <obs-internal/media-io/audio-math.h>
+#else
+static inline float db_to_mul(float db)
+{
+    return powf(10.0f, db / 20.0f);
+}
+#endif
 #include <obs-module.h>
 #include <util/platform.h>
 
 #include "miniaudio.h"
 #include "indicator.h"
+
+#ifndef PLUGIN_VERSION
+#define PLUGIN_VERSION "unknown"
+#endif
+
+#ifndef GIT_BRANCH
+#define GIT_BRANCH "unknown"
+#endif
+
+#ifndef BUILD_TIME
+#define BUILD_TIME __DATE__ " " __TIME__
+#endif
 
 #define write_log(log_level, format, ...) \
 	blog(log_level, "[muted-notification] " format, ##__VA_ARGS__)
@@ -539,8 +561,8 @@ const char *obs_module_description(void)
 bool obs_module_load(void)
 {
     obs_register_source(&muted_filter);
-    binfo("loaded v%s, %s@%s, compile time: %s", PLUGIN_VERSION,
-          GIT_COMMIT_HASH, GIT_BRANCH, BUILD_TIME);
+        binfo("loaded v%s, %s@%s, compile time: %s", PLUGIN_VERSION,
+            "unknown", GIT_BRANCH, BUILD_TIME);
 
     indicator_init();
     return true;

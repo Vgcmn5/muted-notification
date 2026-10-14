@@ -71,6 +71,24 @@ function(_setup_obs_studio)
     set(_cmake_arch "-DCMAKE_OSX_ARCHITECTURES:STRING='arm64;x86_64'")
     set(_cmake_extra "-DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
     set(_cmake_version "3.0.0")
+
+    set(_obs_mac_cc "${dependencies_dir}/${_obs_destination}/cmake/macos/compilerconfig.cmake")
+    if(EXISTS "${_obs_mac_cc}")
+      file(READ "${_obs_mac_cc}" _obs_cc_contents)
+      string(REGEX REPLACE "string\\(REGEX MATCH[^\n]+\n" "" _obs_cc_contents "${_obs_cc_contents}")
+      string(REPLACE "FATAL_ERROR" "STATUS" _obs_cc_contents "${_obs_cc_contents}")
+      string(REPLACE "-Werror" "-Wno-error" _obs_cc_contents "${_obs_cc_contents}")
+      file(WRITE "${_obs_mac_cc}" "${_obs_cc_contents}")
+    endif()
+    set(_obs_common_cc "${dependencies_dir}/${_obs_destination}/cmake/common/compiler_common.cmake")
+    if(EXISTS "${_obs_common_cc}")
+      file(READ "${_obs_common_cc}" _obs_common_contents)
+      string(REPLACE "-Werror" "-Wno-error" _obs_common_contents "${_obs_common_contents}")
+      file(WRITE "${_obs_common_cc}" "${_obs_common_contents}")
+    endif()
+    execute_process(
+      COMMAND find "${dependencies_dir}" -name "*.cmake" -exec sed -i "" "s/-framework AGL//g" {} +
+    )
   endif()
 
   message(STATUS "Configure ${label} (${arch})")
@@ -81,16 +99,14 @@ function(_setup_obs_studio)
       -DOBS_CMAKE_VERSION:STRING=${_cmake_version} -DENABLE_PLUGINS:BOOL=OFF -DENABLE_UI:BOOL=OFF
       -DOBS_VERSION_OVERRIDE:STRING=${_obs_version} "-DCMAKE_PREFIX_PATH='${CMAKE_PREFIX_PATH}'" ${_is_fresh}
       ${_cmake_extra}
-    RESULT_VARIABLE _process_result COMMAND_ERROR_IS_FATAL ANY
-    OUTPUT_QUIET)
+    RESULT_VARIABLE _process_result COMMAND_ERROR_IS_FATAL ANY)
   message(STATUS "Configure ${label} (${arch}) - done")
 
   message(STATUS "Build ${label} (${arch})")
   execute_process(
     COMMAND "${CMAKE_COMMAND}" --build build_${arch} --target obs-frontend-api --config Debug --parallel
     WORKING_DIRECTORY "${dependencies_dir}/${_obs_destination}"
-    RESULT_VARIABLE _process_result COMMAND_ERROR_IS_FATAL ANY
-    OUTPUT_QUIET)
+    RESULT_VARIABLE _process_result COMMAND_ERROR_IS_FATAL ANY)
   message(STATUS "Build ${label} (${arch}) - done")
 
   message(STATUS "Install ${label} (${arch})")

@@ -3,6 +3,16 @@ cmake_minimum_required(VERSION 3.16...3.26)
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/common/bootstrap.cmake" NO_POLICY_SCOPE)
 
+# Ensure a usable C/C++ toolchain is present before project() runs.
+# This avoids the "No CMAKE_C_COMPILER could be found" / "No CMAKE_CXX_COMPILER could be found" error on systems
+# where the compiler is installed but not selected in the environment.
+if(NOT CMAKE_C_COMPILER)
+  find_program(CMAKE_C_COMPILER NAMES clang gcc cc REQUIRED)
+endif()
+if(NOT CMAKE_CXX_COMPILER)
+  find_program(CMAKE_CXX_COMPILER NAMES clang++ g++ c++ REQUIRED)
+endif()
+
 project(${_name} VERSION ${_version} LANGUAGES C CXX)
 
 option(ENABLE_FRONTEND_API "Use obs-frontend-api for UI functionality" ON)
